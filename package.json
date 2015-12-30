@@ -1,0 +1,34 @@
+{
+  "name": "ibsforts-plugin-babel",
+  "version": "0.0.1",
+  "description": "Runs Babel on code emitted by the Incremental Build Server for TypeScript.",
+  "main": "lib/index.js",
+  "typings": "lib/index.d.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/enlight/ibsforts-plugin-babel.git"
+  },
+  "keywords": [
+    "typescript",
+    "incremental",
+    "build",
+    "server",
+    "babel"
+  ],
+  "author": "Vadim Macagon <vadim.macagon@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/enlight/ibsforts-plugin-babel/issues"
+  },
+  "homepage": "https://github.com/enlight/ibsforts-plugin-babel#readme",
+  "devDependencies": {
+    "typescript": "^1.8.0-dev.20151229"
+  },
+  "dependencies": {
+    "babel-core": "^6.3.26",
+    "lodash": "^3.10.1"
+  }
+}
