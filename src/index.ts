@@ -74,48 +74,115 @@ function transformFile(inFile: ts.OutputFile, options: babel.IOptions, files: ts
 }
 
 /**
- * Transform a bunch of files with Babel.
+ * Attempt to load a Babel plugin via standard NodeJS module resolution.
  *
- * @param inputFiles Files to transform, emitted either by the TypeScript compiler, or another transform.
- * @param options Options to pass through to Babel.
- * @return The transformed files.
+ * @param id Identifier of the plugin module, the `babel-plugin-` prefix can be omitted.
+ * @return The function exported by the plugin.
  */
-export function babelTransform(inputFiles: ts.OutputFile[], options: babel.IOptions): Promise<ts.OutputFile[]> {
-  const optionsOverride: babel.IOptions = {
-    ast: false,
-    shouldPrintComment: comment => !isSourceMappingURLComment(comment)
-  };
+function loadBabelPlugin(id: string): Function {
+  let fromModule = module;
+  let plugin: Function = null;
+  const prefix = 'babel-plugin-';
+  const idHasPrefix = (id.indexOf(prefix) === 0);
+  while (!plugin && fromModule) {
+    try {
+      plugin = fromModule.require(id);
+    } catch (err) {
+      // FIXME: This needs to be a bit smarter to handle relative module paths!
+      // Babel plugin modules are usually prefixed by `babel-plugin-`, but that prefix can be
+      // omitted when specifying plugins in the options (in `.babelrc` for example), so if
+      // module lookup fails when the prefix is missing try again with the prefix.
+      if (!idHasPrefix) {
+        try {
+          plugin = fromModule.require(prefix + id);
+        } catch (err) {
+          // oh well
+        }
+      }
+      // if the module lookup fails try again from the parent module,
+      // this is handy when this module is symlinked into the consuming project
+      // (via `npm link` for example)
+      if (!plugin) {
+        if (fromModule === module) {
+          fromModule = module.parent;
+        } else {
+          // only try one level up under the assumption that simlink chains are rare
+          fromModule = null;
+        }
+      }
+    }
+  }
+  if (!plugin) {
+    throw Error(`Unable to load Babel plugin '${id}'`);
+  }
+  return plugin;
+}
 
-  return Promise.resolve()
-  .then(() => {
-    _.extend(options, optionsOverride);
-    return inputFiles.reduce((transformedFiles, inputFile) => {
-      return inputFile.name.endsWith('.map')
-        ? transformedFiles
-        : transformedFiles.concat(transformFile(inputFile, options, inputFiles));
-    }, []);
-  });
+export interface Options extends babel.IOptions {
+  /**
+   * If set to `true` Babel plugin modules will be located and loaded using standard NodeJS module
+   * resolution rather than Babel's built-in module resolution. Defaults to `false`.
+   */
+  enableNodeModuleResolution: boolean;
 }
 
 export type OutputDebugFile = (file: ts.OutputFile) => Promise<void>;
 
-/**
- * Transform a bunch of files with Babel.
- *
- * @param inputFiles Files to transform, emitted either by the TypeScript compiler, or another transform.
- * @param options Options to pass through to Babel.
- * @param debugInput Will be invoked for each input file before it is transformed with Babel.
- * @param debugOutput Will be invoked for each transformed file.
- * @return The transformed files.
- */
-export function babelTransformDebug(
-  files: ts.OutputFile[], options: babel.IOptions,
-  debugInput: OutputDebugFile, debugOutput: OutputDebugFile
-): Promise<ts.OutputFile[]> {
-  return Promise.all(files.map(debugInput))
-  .then(() => babelTransform(files, options))
-  .then(transformedFiles => {
-    return Promise.all(transformedFiles.map(debugOutput))
-    .then(() => transformedFiles);
-  });
+export class BabelPlugin {
+  constructor(private enableNodeModuleResolution: boolean, private babelOptions: babel.IOptions) {
+    if (this.enableNodeModuleResolution) {
+      this.babelOptions.plugins = babelOptions.plugins.map(babelPlugin =>
+        (typeof babelPlugin === 'string') ? loadBabelPlugin(babelPlugin) : babelPlugin
+      );
+    }
+    const overrides: babel.IOptions = {
+      ast: false,
+      shouldPrintComment: comment => !isSourceMappingURLComment(comment)
+    };
+    _.extend(this.babelOptions, overrides);
+  }
+
+  /**
+   * Transform a bunch of files with Babel.
+   *
+   * @param inputFiles Files to transform, emitted either by the TypeScript compiler, or another transform.
+   * @param options Options to pass through to Babel.
+   * @return The transformed files.
+   */
+  babelTransform(inputFiles: ts.OutputFile[]): Promise<ts.OutputFile[]> {
+    return Promise.resolve()
+    .then(() => {
+      return inputFiles.reduce((transformedFiles, inputFile) => {
+        return inputFile.name.endsWith('.map')
+          ? transformedFiles
+          : transformedFiles.concat(transformFile(inputFile, this.babelOptions, inputFiles));
+      }, []);
+    });
+  }
+
+  /**
+   * Transform a bunch of files with Babel.
+   *
+   * @param inputFiles Files to transform, emitted either by the TypeScript compiler, or another transform.
+   * @param options Options to pass through to Babel.
+   * @param debugInput Will be invoked for each input file before it is transformed with Babel.
+   * @param debugOutput Will be invoked for each transformed file.
+   * @return The transformed files.
+   */
+  babelTransformDebug(
+    files: ts.OutputFile[], debugInput: OutputDebugFile, debugOutput: OutputDebugFile
+  ): Promise<ts.OutputFile[]> {
+    return Promise.all(files.map(debugInput))
+    .then(() => this.babelTransform(files))
+    .then(transformedFiles => {
+      return Promise.all(transformedFiles.map(debugOutput))
+      .then(() => transformedFiles);
+    });
+  }
+}
+
+export function createPlugin(options: Options): BabelPlugin {
+  // Babel throws exceptions when it finds options that it doesn't recognize
+  const babelOptions = _.omit(options, 'enableNodeModuleResolution');
+  return new BabelPlugin(options.enableNodeModuleResolution, babelOptions);
 }

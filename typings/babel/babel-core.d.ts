@@ -11,7 +11,7 @@ declare module 'babel-core' {
     /** List of presets (a set of plugins) to load and use, defaults to `[]`. */
     presets?: string[];
     /** List of plugins to load and use. */
-    plugins?: string[];
+    plugins?: Array<string | Function>;
     /** ANSI highlight syntax error code frames, defaults to `true`. */
     highlightCode?: boolean;
     /**
