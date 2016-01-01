@@ -118,12 +118,16 @@ function loadBabelPlugin(id: string): Function {
   return plugin;
 }
 
+function shouldTransformFile(fileName: string): boolean {
+  return fileName.endsWith('.js') || fileName.endsWith('.jsx');
+}
+
 export interface Options extends babel.IOptions {
   /**
    * If set to `true` Babel plugin modules will be located and loaded using standard NodeJS module
    * resolution rather than Babel's built-in module resolution. Defaults to `false`.
    */
-  enableNodeModuleResolution: boolean;
+  enableNodeModuleResolution?: boolean;
 }
 
 export type OutputDebugFile = (file: ts.OutputFile) => Promise<void>;
@@ -153,9 +157,9 @@ export class BabelPlugin {
     return Promise.resolve()
     .then(() => {
       return inputFiles.reduce((transformedFiles, inputFile) => {
-        return inputFile.name.endsWith('.map')
-          ? transformedFiles
-          : transformedFiles.concat(transformFile(inputFile, this.babelOptions, inputFiles));
+        return shouldTransformFile(inputFile.name)
+          ? transformedFiles.concat(transformFile(inputFile, this.babelOptions, inputFiles))
+          : transformedFiles;
       }, []);
     });
   }
