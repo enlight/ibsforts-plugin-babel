@@ -1,4 +1,4 @@
-// Copyright (c) 2015 Vadim Macagon
+// Copyright (c) 2015-2016 Vadim Macagon
 // MIT License, see LICENSE file for full terms.
 
 import * as path from 'path';
@@ -122,6 +122,13 @@ function shouldTransformFile(fileName: string): boolean {
   return fileName.endsWith('.js') || fileName.endsWith('.jsx');
 }
 
+function shouldDiscardFile(fileName: string): boolean {
+  // the original source maps are always discarded because more likely than not they will no longer
+  // be accurate after Babel transforms the corresponding source file, Babel will generate a new
+  // source map to replace the original one if requested
+  return fileName.endsWith('.map');
+}
+
 export interface Options extends babel.IOptions {
   /**
    * If set to `true` Babel plugin modules will be located and loaded using standard NodeJS module
@@ -157,9 +164,13 @@ export class BabelPlugin {
     return Promise.resolve()
     .then(() => {
       return inputFiles.reduce((transformedFiles, inputFile) => {
-        return shouldTransformFile(inputFile.name)
-          ? transformedFiles.concat(transformFile(inputFile, this.babelOptions, inputFiles))
-          : transformedFiles;
+        if (shouldTransformFile(inputFile.name)) {
+          return transformedFiles.concat(transformFile(inputFile, this.babelOptions, inputFiles))
+        } else if (shouldDiscardFile(inputFile.name)) {
+          return transformedFiles;
+        } else {
+          return transformedFiles.concat(inputFile);
+        }
       }, []);
     });
   }
